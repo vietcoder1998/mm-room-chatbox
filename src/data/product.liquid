@@ -1,0 +1,16 @@
+<a>Hello world </a>
+<div> {{ name }} </div>
+    <ul>
+        {%- if value === 3 -%}
+            <div> {{ value }} <div>
+        {%- endif -%}
+
+        <div>
+            {%- for item in product  -%}
+                {%- if item.name !== "glass" -%}
+                    <li>{{ item.name }} </li>  
+                {%- endif -%}
+            {%- endfor -%}
+        </div>
+    </ul>
+<div>

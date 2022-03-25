@@ -1,0 +1,342 @@
+import fs from 'fs'
+import path from 'path'
+
+export interface PureInfo {
+  liquid: string
+  meta: {
+    [key: string]: any
+  }
+  context?: string
+}
+
+// move get context from liquid file with name
+export async function get_liquid_info(
+  name: string
+): Promise<PureInfo> {
+  const liquid = await fs
+    .readFileSync(path.join(__dirname, 'data', `${name}.liquid`))
+    .toString()
+
+  const meta = JSON.parse(
+    await fs
+      .readFileSync(path.join(__dirname, 'data', `${name}.meta.json`))
+      .toString()
+  )
+
+  return {
+      liquid,
+      meta,
+  }
+}
+
+// get context html
+export async function get_html_context(name: string) {
+  const context = await fs
+    .readFileSync(path.join(__dirname, 'export', `${name}.html`))
+    .toString()
+  return {
+    [name]: context
+  }
+}
+
+// write context to html
+export async function write_context(
+  name: string
+): Promise<{ msg: string; code?: number }> {
+  const {liquid, meta}:  PureInfo= await get_liquid_info(name)
+  Object.values(liquid).forEach((vl) => {
+    const context: string = convertLiquidAndMetaToContext(liquid, meta)
+    const default_data: string = default_template(context)
+
+    fs.writeFileSync(
+      path.join(__dirname, 'export', `${name}.html`),
+      default_data
+    )
+  })
+
+  return { msg: 'success', code: 1 }
+}
+
+export function convertLiquidAndMetaToContext(liquid: string, meta: {[key: string]: any}) : string{
+  const sub_function: string =  subFunctionLiquid({liquid, meta})
+  const sub_variable: string = subVariableLiquid({liquid: sub_function, meta})
+
+  return sub_variable
+}
+
+// convert liquid to product, example {{ product }}, product: "text is 12" => text is 12
+export function subVariableLiquid({
+  liquid,
+  meta
+}: PureInfo): string {
+  let context: string = liquid.toString()
+
+  // match with {{ name }}  in regex
+  const regex = /(\{\{)((?:[^}]+))\}\}/g
+  const list_match: string[] = liquid.match(regex) ?? []
+
+  // match with {%- name -%} in regex
+
+  list_match.forEach((item) => {
+    // get key from match , like : {{product}} => 'product'
+    const key: string = getContentInCurlyBracket(item)
+
+    // replace value inside double bracket
+    context = context.replace(
+      item, // ex: {{ product }}
+      // replace double bracket
+      meta[key] // ex: {{ product }} => meta['product']
+    )
+  })
+
+  return context
+}
+
+// convert function to context
+export function subFunctionLiquid({
+  liquid,
+  meta
+}: PureInfo): string {
+  let context: string = liquid.toString()
+  const regex_fn = /(\{\%\-)((?:([^-]|([^-]$[^%]))+))-\%\}/g
+  const list_match = liquid.match(regex_fn) ?? []
+  const search_match = list_match.map((context, index: number) => ({
+    start: liquid.search(context),
+    len: context.length,
+    index,
+    context,
+    result: break_context(context, meta)
+  }))
+
+  const convert_context_list = matchInOutResult(search_match)
+
+  /// new context is [{typeof search_match }, {typeof search_match }][], should return destroy map
+  const destroy_context_list: [number, number][] = []
+
+  // push value into convert context list for destroyer
+  convert_context_list.forEach((context) => {
+    const left = context[0]
+    const right = context[1]
+    console.log(left, right)
+
+    if (left && right) {
+      Object.assign(left, {
+        type: left?.result?.type,
+        value: left?.result.value
+      })
+      Object.assign(right, {
+        type: right?.result?.type,
+        value: right?.result?.value
+      })
+
+      // copy typing into result
+      const value: [number, number][] = context_destroyer(left, right)
+
+      console.log('context_destroy', value)
+      value?.forEach((vl: [number, number]) => destroy_context_list.push(vl))
+    }
+  })
+
+  // destroy context with array params
+  const nContext: string = destroy_context(destroy_context_list, context)
+
+  return nContext
+}
+
+// map value if else splice ata to
+/// receive list of result, output is [[input, right], [input, output], [input, output], [left, right]]
+// ex: [1, 2,3 4] =>[[1, 4], [2, 3]]
+export function matchInOutResult(
+  search_match: {
+    start: number
+    len: number
+    index: number
+    context: string
+    result: {
+      value: any
+      type: string
+    }
+  }[]
+) {
+  const result: [any, any][] = []
+  const len = search_match.length
+
+  if (len % 2 === 1) {
+    return []
+  }
+  search_match.forEach((vl, i) => {
+    // add right and left
+    result.push([search_match[len / 2 - i - 1], search_match[len / 2 + i]])
+  })
+  return result
+}
+
+// break function liquid context
+export function break_context(liquid: string, meta: object) {
+  // transform {%- [text] -%} into [string, string, ...args:[]] to check typing
+  let breaker = liquid
+    .split('{%-')
+    .join('')
+    .split('-%}')
+    .join('')
+    .split(' ')
+    .filter((item) => item !== '')
+  let value = {}
+
+  console.log(liquid)
+
+  // breaker[0] is typeof function
+  /// ex: if || for
+  switch (breaker[0]) {
+    case 'if':
+      const var1 = breaker[1]
+      const opr: string = breaker[2]
+      const var2 = breaker[3]
+
+      // if var1 is string, return string,
+      const val1 = true_value(var1, meta)
+      const val2 = true_value(var2, meta)
+
+      // get result of operator
+      value = value_operator_with_if<typeof val1>(val1, opr, val2)
+    case 'for':
+      break
+    default:
+      break
+  }
+  console.log(value)
+  return {
+    value,
+    type: breaker[0]
+  }
+}
+
+// input and output
+//
+// remove context with if, for
+/// ex: start: {value: true, type: if, index: 12, len: 8}, end: {value: true, type: if, index: 12, len: 8}]
+function context_destroyer(
+  left: { type: string; len: number; value: any; start: number },
+  right: { type: string; len: number; value: any; start: number }
+): Array<[number, number]> {
+  let result: [number, number][] = []
+  console.log('left is', left,'right is', right)
+  if (
+    left?.type === 'if' && right?.type === 'endif'
+  ) {
+    if (left.value) {
+      result = [
+            [left.start, left.start + left.len],
+            [right.start, right.start + right.len]
+          ]
+    } else {
+       result = [[left.start, right.start + right.len]]
+    }
+  }
+
+  return result
+}
+
+// receive a input array string, destroy array
+function destroy_context(params: [number, number][], context: string) {
+  let n_context = context.toString()
+  for (let i = params.length - 1; i >= 0; i--) {
+    const element = params[i]
+    const p1 = element[0]
+    const p2 = element[1]
+    const mover = n_context.substring(p1, p2)
+    n_context = n_context.split(mover).join('')
+  }
+
+  return n_context
+}
+
+// check variable in function, if a number or string, return it, it is object, checking and return to value
+/// ex: meta: { foo: {bar: 1}}, name: foo, return meta.foo; name: "Jon"; name: 1 return 1
+/// ex: name: foo => ['foo']
+/// foo.baz => ['foo', 'baz]
+// convert value in function to rich value
+function true_value(name: string, meta: Object) {
+  console.log('name is', name)
+  if (parseInt(name)) {
+    return name
+  }
+
+  // check if contain "" like: "Jon"
+  if (name.includes('"')) {
+    return name.split('"').join('')
+  } else {
+    const tree_keys = name.split('.')
+
+    let rs = get_data_in_multi_level_object(tree_keys, meta)
+    console.log('result is', rs)
+    return rs
+  }
+}
+
+// double curly bracket
+function getContentInCurlyBracket(data: string) {
+  const sub_space = data.slice(2, -2).trim().toString()
+  return sub_space
+}
+
+// function bracket
+function get_content_in_fn_bracket(data: string) {
+  const sub_space = data.slice(3, -3).trim().toString()
+  return sub_space
+}
+
+// operator support is more than >=, less than <=, equal: ==
+// switch value function with operator
+
+// type IfOperator = '>=' | "<=" | "=="
+function value_operator_with_if<T>(vl1: T, op: string, vl2: T) {
+  console.log(vl1, op, vl2)
+  switch (op) {
+    case '<=':
+      return vl1 <= vl2
+    case '==':
+      return vl1 === vl2
+    case '>=':
+      return vl1 >= vl2
+    default:
+      return false
+  }
+}
+
+/// ex: const x = { a: {b: {foo: baz}}} => get_data_in_multi_level_object([a, b], x) => result : {foo: baz}
+function get_data_in_multi_level_object(
+  keys: string[],
+  target: { [key: string]: any }
+): any {
+  const len = keys.length
+  let result: any = null
+  let temp = 0
+
+  while (temp < len) {
+    let key = keys[temp]
+    if (target[key]) {
+      result = target[key]
+      target = target[key]
+    } else {
+      result = null
+      break
+    }
+
+    temp++
+  }
+
+  return result
+}
+
+export function default_template(data: string) {
+  return `<DOCTYPE !html>
+        <html>
+            <header>
+            </header>
+            <body>
+                ${data}
+            </body>
+        <html>
+    `
+}
