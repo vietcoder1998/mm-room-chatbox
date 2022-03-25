@@ -75,17 +75,19 @@ export function subVariableLiquid({
   const regex = /(\{\{)((?:[^}]+))\}\}/g
   const list_match: string[] = liquid.match(regex) ?? []
 
-  // match with {%- name -%} in regex
+  // match with {{ name }} in regex
 
   list_match.forEach((item) => {
-    // get key from match , like : {{product}} => 'product'
-    const key: string = getContentInCurlyBracket(item)
+    // get key from match , like : {{ product }} => 'product'
+    const insideContent: string = getContentInCurlyBracket(item)
+    const keys: string[] = insideContent.split('.')
+    const metadata = getDataInMultiLevelObject(keys, meta)
 
     // replace value inside double bracket
     context = context.replace(
       item, // ex: {{ product }}
       // replace double bracket
-      meta[key] // ex: {{ product }} => meta['product']
+      metadata // ex: {{ product }} => meta['product']
     )
   })
 
@@ -100,12 +102,14 @@ export function subFunctionLiquid({
   let context: string = liquid.toString()
   const regex_fn = /(\{\%\-)((?:([^-]|([^-]$[^%]))+))-\%\}/g
   const list_match = liquid.match(regex_fn) ?? []
+  
+  // map regex info to data for convert
   const search_match = list_match.map((context, index: number) => ({
     start: liquid.search(context),
     len: context.length,
     index,
     context,
-    result: break_context(context, meta)
+    result: breakFunctionContext(context, meta)
   }))
 
   const convert_context_list = matchInOutResult(search_match)
@@ -117,7 +121,6 @@ export function subFunctionLiquid({
   convert_context_list.forEach((context) => {
     const left = context[0]
     const right = context[1]
-    console.log(left, right)
 
     if (left && right) {
       Object.assign(left, {
@@ -131,8 +134,6 @@ export function subFunctionLiquid({
 
       // copy typing into result
       const value: [number, number][] = context_destroyer(left, right)
-
-      console.log('context_destroy', value)
       value?.forEach((vl: [number, number]) => destroy_context_list.push(vl))
     }
   })
@@ -171,8 +172,9 @@ export function matchInOutResult(
   return result
 }
 
+
 // break function liquid context
-export function break_context(liquid: string, meta: object) {
+export function breakFunctionContext(liquid: string, meta: object) {
   // transform {%- [text] -%} into [string, string, ...args:[]] to check typing
   let breaker = liquid
     .split('{%-')
@@ -182,8 +184,6 @@ export function break_context(liquid: string, meta: object) {
     .split(' ')
     .filter((item) => item !== '')
   let value = {}
-
-  console.log(liquid)
 
   // breaker[0] is typeof function
   /// ex: if || for
@@ -268,7 +268,7 @@ function true_value(name: string, meta: Object) {
   } else {
     const tree_keys = name.split('.')
 
-    let rs = get_data_in_multi_level_object(tree_keys, meta)
+    let rs = getDataInMultiLevelObject(tree_keys, meta)
     console.log('result is', rs)
     return rs
   }
@@ -304,8 +304,8 @@ function value_operator_with_if<T>(vl1: T, op: string, vl2: T) {
   }
 }
 
-/// ex: const x = { a: {b: {foo: baz}}} => get_data_in_multi_level_object([a, b], x) => result : {foo: baz}
-function get_data_in_multi_level_object(
+/// ex: const x = { a: {b: {foo: baz}}} => getDataInMultiLevelObject([a, b], x) => result : {foo: baz}
+function getDataInMultiLevelObject(
   keys: string[],
   target: { [key: string]: any }
 ): any {
