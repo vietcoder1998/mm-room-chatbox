@@ -10,9 +10,7 @@ export interface PureInfo {
 }
 
 // move get context from liquid file with name
-export async function get_liquid_info(
-  name: string
-): Promise<PureInfo> {
+export async function get_liquid_info(name: string): Promise<PureInfo> {
   const liquid = await fs
     .readFileSync(path.join(__dirname, 'data', `${name}.liquid`))
     .toString()
@@ -24,8 +22,8 @@ export async function get_liquid_info(
   )
 
   return {
-      liquid,
-      meta,
+    liquid,
+    meta
   }
 }
 
@@ -43,7 +41,7 @@ export async function get_html_context(name: string) {
 export async function write_context(
   name: string
 ): Promise<{ msg: string; code?: number }> {
-  const {liquid, meta}:  PureInfo= await get_liquid_info(name)
+  const { liquid, meta }: PureInfo = await get_liquid_info(name)
   Object.values(liquid).forEach((vl) => {
     const context: string = convertLiquidAndMetaToContext(liquid, meta)
     const default_data: string = default_template(context)
@@ -57,18 +55,21 @@ export async function write_context(
   return { msg: 'success', code: 1 }
 }
 
-export function convertLiquidAndMetaToContext(liquid: string, meta: {[key: string]: any}) : string{
-  const sub_function: string =  subFunctionLiquid({liquid, meta})
-  const sub_variable: string = subVariableLiquid({liquid: sub_function, meta})
+export function convertLiquidAndMetaToContext(
+  liquid: string,
+  meta: { [key: string]: any }
+): string {
+  // replace sub Function with for and if function
+  const sub_function: string = subFunctionLiquid({ liquid, meta })
+
+  // replace variable liquid with variable
+  const sub_variable: string = subVariableLiquid({ liquid: sub_function, meta })
 
   return sub_variable
 }
 
 // convert liquid to product, example {{ product }}, product: "text is 12" => text is 12
-export function subVariableLiquid({
-  liquid,
-  meta
-}: PureInfo): string {
+export function subVariableLiquid({ liquid, meta }: PureInfo): string {
   let context: string = liquid.toString()
 
   // match with {{ name }}  in regex
@@ -94,39 +95,82 @@ export function subVariableLiquid({
   return context
 }
 
+// get context inside match regex
+export function getContentInsideMatchContext(
+  [start, start_len]: [number, number],
+  [end, end_len]: [number, number],
+  context: string
+): string {
+  return context.slice(start + start_len, end + end_len)
+}
+
+// check is function ( if | for)
+export function isFunction(content: string): boolean {
+  return (
+    content.includes('if') ||
+    (content.includes('for') && !content.includes('end'))
+  )
+}
+
 // convert function to context
-export function subFunctionLiquid({
-  liquid,
-  meta
-}: PureInfo): string {
+export function subFunctionLiquid({ liquid, meta }: PureInfo): string {
   let context: string = liquid.toString()
-  const regex_fn = /(\{\%\-)((?:([^-]|([^-]$[^%]))+))-\%\}/g
+  const regex_fn = /(\{\%\-)((?:([^-]|([^-]$[^%]))+))-\%\})/g
   const list_match = liquid.match(regex_fn) ?? []
-  
+
   // map regex info to data for convert
-  const search_match = list_match.map((context, index: number) => ({
-    start: liquid.search(context),
+  const search_match: {
+    start: number
+    len: number
+    index: number
+    content: string
+    inside: string
+    result: any
+  }[] = list_match.map((content, index: number) => ({
+    start: liquid.search(content),
     len: context.length,
     index,
-    context,
+    content,
+    inside: '',
     result: breakFunctionContext(context, meta)
   }))
 
-  const convert_context_list = matchInOutResult(search_match)
+  for (let i = 0; i < search_match.length - 1; i++) {
+    const now = search_match[i]
+    const next = search_match[i]
+
+    now.inside = isFunction(now.content)
+      ? getContentInsideMatchContext(
+          [now.index, now.len],
+          [next.index, next.len],
+          context
+        )
+      : ''
+  }
+
+  //
+  const list_type: string[] = search_match.map((m) => m.result?.type)
+
+  // match if and for function
+  const convert_content_list: [any, any][] =
+    matchFunctionInSearchMatch(search_match)
 
   /// new context is [{typeof search_match }, {typeof search_match }][], should return destroy map
   const destroy_context_list: [number, number][] = []
 
   // push value into convert context list for destroyer
-  convert_context_list.forEach((context) => {
-    const left = context[0]
-    const right = context[1]
+  convert_content_list.forEach((content) => {
+    const left = content[0]
+    const right = content[1]
 
     if (left && right) {
+      // left 
       Object.assign(left, {
         type: left?.result?.type,
         value: left?.result.value
       })
+
+      // right
       Object.assign(right, {
         type: right?.result?.type,
         value: right?.result?.value
@@ -147,12 +191,13 @@ export function subFunctionLiquid({
 // map value if else splice ata to
 /// receive list of result, output is [[input, right], [input, output], [input, output], [left, right]]
 // ex: [1, 2,3 4] =>[[1, 4], [2, 3]]
-export function matchInOutResult(
+export function matchFunctionInSearchMatch(
   search_match: {
     start: number
     len: number
     index: number
-    context: string
+    content: string,
+    inside: string,
     result: {
       value: any
       type: string
@@ -166,15 +211,19 @@ export function matchInOutResult(
     return []
   }
   search_match.forEach((vl, i) => {
-    // add right and left
-    result.push([search_match[len / 2 - i - 1], search_match[len / 2 + i]])
+    if (vl && i % 2 === 0) {
+      // add right and left
+      result.push([search_match[i], search_match[i + 1]])
+    }
   })
   return result
 }
 
-
 // break function liquid context
-export function breakFunctionContext(liquid: string, meta: object) {
+export function breakFunctionContext(
+  liquid: string,
+  meta: object
+): { value: any; type: string } {
   // transform {%- [text] -%} into [string, string, ...args:[]] to check typing
   let breaker = liquid
     .split('{%-')
@@ -183,36 +232,39 @@ export function breakFunctionContext(liquid: string, meta: object) {
     .join('')
     .split(' ')
     .filter((item) => item !== '')
-  let value = {}
+  const type = breaker[0]
 
   // breaker[0] is typeof function
   /// ex: if || for
-  switch (breaker[0]) {
+  switch (type) {
     case 'if':
-      const var1 = breaker[1]
-      const opr: string = breaker[2]
-      const var2 = breaker[3]
-
-      // if var1 is string, return string,
-      const val1 = true_value(var1, meta)
-      const val2 = true_value(var2, meta)
-
       // get result of operator
-      value = value_operator_with_if<typeof val1>(val1, opr, val2)
+      return {
+        value: valueOperatorWithIf(
+          trueValue(breaker[1], meta),
+          breaker[2],
+          trueValue(breaker[3], meta)
+        ),
+        type
+      }
     case 'for':
-      break
+      return {
+        value: valueOperatorWithFor(
+          trueValue(breaker[1], meta, 'for'),
+          breaker[2],
+          trueValue(breaker[3], meta)
+        ),
+        type
+      }
     default:
-      break
-  }
-  console.log(value)
-  return {
-    value,
-    type: breaker[0]
+      return {
+        value: {},
+        type
+      }
   }
 }
 
 // input and output
-//
 // remove context with if, for
 /// ex: start: {value: true, type: if, index: 12, len: 8}, end: {value: true, type: if, index: 12, len: 8}]
 function context_destroyer(
@@ -220,17 +272,14 @@ function context_destroyer(
   right: { type: string; len: number; value: any; start: number }
 ): Array<[number, number]> {
   let result: [number, number][] = []
-  console.log('left is', left,'right is', right)
-  if (
-    left?.type === 'if' && right?.type === 'endif'
-  ) {
+  if (left?.type === 'if' && right?.type === 'endif') {
     if (left.value) {
       result = [
-            [left.start, left.start + left.len],
-            [right.start, right.start + right.len]
-          ]
+        [left.start, left.start + left.len],
+        [right.start, right.start + right.len]
+      ]
     } else {
-       result = [[left.start, right.start + right.len]]
+      result = [[left.start, right.start + right.len]]
     }
   }
 
@@ -256,8 +305,11 @@ function destroy_context(params: [number, number][], context: string) {
 /// ex: name: foo => ['foo']
 /// foo.baz => ['foo', 'baz]
 // convert value in function to rich value
-function true_value(name: string, meta: Object) {
-  console.log('name is', name)
+function trueValue(name: string, meta: Object, type?: string) {
+  if (type == 'for') {
+    return name
+  }
+
   if (parseInt(name)) {
     return name
   }
@@ -288,9 +340,8 @@ function get_content_in_fn_bracket(data: string) {
 
 // operator support is more than >=, less than <=, equal: ==
 // switch value function with operator
-
 // type IfOperator = '>=' | "<=" | "=="
-function value_operator_with_if<T>(vl1: T, op: string, vl2: T) {
+function valueOperatorWithIf<T>(vl1: T, op: string, vl2: T) {
   console.log(vl1, op, vl2)
   switch (op) {
     case '<=':
@@ -299,8 +350,41 @@ function value_operator_with_if<T>(vl1: T, op: string, vl2: T) {
       return vl1 === vl2
     case '>=':
       return vl1 >= vl2
+    case '!=':
+      return vl1 !== vl2
     default:
       return false
+  }
+}
+
+// type IfOperator = '>=' | "<=" | "=="
+function valueOperatorWithFor<T>(vl1: any, op: string, vl2: any) {
+  if (op === 'in') {
+    return {
+      name: vl1,
+      data: vl2
+    }
+  } else {
+    throw new Error('Error with for')
+  }
+}
+
+// update map to object typing
+/// create tree_object
+function TreeObject(
+  parent: Object,
+  key: string,
+  value: any,
+  type: 'in' | 'out'
+) {
+  if (type === 'out') {
+    Object.assign(parent, {
+      [key]: value
+    })
+  } else {
+    return {
+      ...parent
+    }
   }
 }
 
@@ -331,12 +415,12 @@ function getDataInMultiLevelObject(
 
 export function default_template(data: string) {
   return `<DOCTYPE !html>
-        <html>
-            <header>
-            </header>
-            <body>
-                ${data}
-            </body>
-        <html>
+            <html>
+                <header>
+                </header>
+                <body>
+                    ${data}
+                </body>
+            <html>
     `
 }

@@ -7,9 +7,7 @@
 
         <div>
             {%- for item in product  -%}
-                {%- if item.name !== "glass" -%}
-                    <li>{{ item.name }} </li>  
-                {%- endif -%}
+                <li>{{ item.name }} </li>  
             {%- endfor -%}
         </div>
     </ul>
