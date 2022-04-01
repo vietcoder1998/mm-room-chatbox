@@ -1,8 +1,0 @@
-{
-  "name": "Beae.com",
-  "product": [
-    { "name": "Glass", "price": 2 },
-    { "name": "Phone", "price": 3 }
-  ],
-  "value": 3
-}

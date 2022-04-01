@@ -1,16 +1,16 @@
 {
   "compilerOptions": {
-    "target": "ES2016",
-    "module": "commonjs",
+    "esModuleInterop": true,
+    "target": "ES2017",
+    "module": "CommonJS",
     "moduleResolution": "node",
     "strict": true,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "lib": ["es2016"],
-    "checkJs": true,
+    "checkJs": false,
     "strictNullChecks": true,
-    "types": [""]
+    "types": [""],
+    "allowJs": true
   },
-  "include": ["src/*.ts"],
+  "include": ["./src/*.ts", "src/data/service.ts"],
 }
