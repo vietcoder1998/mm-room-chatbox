@@ -27,19 +27,21 @@
       socket.emit('addMsg', msg, '1')
     }
 
-    socket.on('receiveMsg', (msgs) => {
-      renderMsg(msgs)
+    socket.on('receiveMsg', (response) => {
+      const { data } = response
+      console.log(data)
+      renderMsg(data.msgs)
     })
 
     socket.on('receiveRoom', (response) => {
-      const {
-        data
-      } = response
+      const { data } = response
       console.log(data)
       renderMsg(data.msgs)
     })
 
     function renderMsg(msgs) {
+      root.innerHTML = ''
+
       msgs.forEach((msg) => {
         const { id, content } = msg
         const element = document.createElement('button')
