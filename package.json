@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "description": "",
   "main": "src/server.ts",
+  "nodemonConfig": {
+    "ignore": [
+      "src/data/*",
+      "docs/*"
+    ]
+  },
   "scripts": {
     "dev": "nodemon src/server.ts",
     "lint": "prettier ."

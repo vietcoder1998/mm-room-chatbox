@@ -5,39 +5,45 @@
     <button onclick="get_room()">rooms</button>
     <section></section>
     <main id="root"></main>
-    <textarea id="message" placeholder="... Press something" rows="4">
-    </textarea>
-    <button>Send</button>
+    <textarea id="msg" placeholder="... Press something" rows="4"> </textarea>
+    <button onclick="addMsg()">Send</button>
   </div>
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const root = document.getElementById('root')
-    console.log(root)
     const socket = io.connect('http://localhost:3100')
+    const root = document.getElementById('root')
+    const contentMsg = document.getElementById('msg')
+
     socket.on('connect', () => {
       console.log('welcome')
     })
 
-    const msg = document.getElementById('')
     const get_room = function () {
       socket.emit('getRoom', '1')
     }
 
-    socket.on('receiveRoom', (response) => {
-      const { data } = response
-      console.log(data)
-      renderMsg(data)
+    const addMsg = function () {
+      const msg = { id: '1', content: contentMsg.value }
+      socket.emit('addMsg', msg, '1')
+    }
+
+    socket.on('receiveMsg', (msgs) => {
+      renderMsg(msgs)
     })
 
-    function renderMsg(data) {
-      const { user, msgs } = data
+    socket.on('receiveRoom', (response) => {
+      const {
+        data
+      } = response
+      renderMsg(data.msgs)
+    })
+
+    function renderMsg(msgs) {
       msgs.forEach((msg) => {
         const { id, content } = msg
         const element = document.createElement('button')
         element.innerHTML = msg.content
         element.id = msg.id
-
-        console.log(element)
 
         root.append(element)
       })

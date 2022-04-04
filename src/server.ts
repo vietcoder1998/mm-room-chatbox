@@ -4,7 +4,8 @@ import { createServer } from 'http'
 import path from 'path'
 import { Server, Socket } from 'socket.io'
 import { ChatResponse } from './data/response'
-import { readRoom } from './data/service'
+import { addMsg, readRoom } from './data/service'
+import { Message } from './typing'
 
 const app = express()
 
@@ -14,21 +15,25 @@ app.get('/:name', async (req, res) => {
   res.sendFile(path.join(__dirname, name))
 })
 
-// app.get('/:name.html', async (req, res) => {
-//   const { name } = req.params
-//   writeContext(name).then(() => {
-//     res.sendFile(path.join(__dirname, 'export', `${name}.html`))
-//   })
-// })
-
 const server = createServer(app)
 
 const io = new Server(server, {})
 io.on('connection', (socket: Socket) => {
-  socket.on('getRoom', async (room_id: string) => {
-    const data = await readRoom(String(room_id))
-    socket.emit('receiveRoom', new ChatResponse(data))
-  })
+  try {
+    socket.on('getRoom', async (room_id: string) => {
+      const data = await readRoom(String(room_id))
+      socket.emit('receiveRoom', new ChatResponse(data))
+    })
+
+    socket.on('addMsg', async (msg: Message, room_id: string) => {
+      console.log(msg, room_id)
+      const { msgs, result } = await addMsg(msg, room_id)
+      socket.emit('receiveMsg', new ChatResponse({ msgs, result }), room_id)
+    })
+  } catch (error) {
+    socket._error(error)
+    throw error
+  }
 })
 
 server.listen('3100', () => {
