@@ -5,14 +5,14 @@ import { Message } from '../typing'
 
 const dir = (id: string) => {
   return {
-    msg: path.join(__dirname, 'rooms', id, 'msg.json'),
+    msgs: path.join(__dirname, 'rooms', id, 'msg.json'),
     user: path.join(__dirname, 'rooms', id, 'user.json')
   }
 }
 
 export async function readRoom(id: string) {
   const linked: any = dir(id)
-  const msgs = JSON.parse(await fs.readFileSync(linked.msg).toString())
+  const msgs = JSON.parse(await fs.readFileSync(linked.msgs).toString())
   const user = JSON.parse(await fs.readFileSync(linked.user).toString())
   return {
     msgs,
@@ -20,24 +20,16 @@ export async function readRoom(id: string) {
   }
 }
 
-export async function addMsg(msg: Message, room_id: string) {
+export async function addMsg(msg: Message, room_id: string, next: Function) {
   const linked: any = dir(room_id)
   fs.readFile(
     linked.msg,
     { encoding: 'utf8' },
     async (err: any, data: string) => {
-      console.log(dir(room_id))
-      console.log(data)
-      const msgs = JSON.parse(data.toString())
-      msgs.push(msg)
-
-      const result = await fs.writeFileSync(linked.msg, JSON.stringify(msgs))
-      console.log(result, msgs)
+      const msgs: Message[] = JSON.parse(data.toString())
+      fs.writeFile(linked.msgs, JSON.stringify(msgs), (err: any) => {
+        next(msgs)
+      })
     }
   )
-
-  return {
-    result: false,
-    msgs: []
-  }
 }

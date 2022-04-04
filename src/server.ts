@@ -26,9 +26,9 @@ io.on('connection', (socket: Socket) => {
     })
 
     socket.on('addMsg', async (msg: Message, room_id: string) => {
-      console.log(msg, room_id)
-      const { msgs, result } = await addMsg(msg, room_id)
-      socket.emit('receiveMsg', new ChatResponse({ msgs, result }), room_id)
+      await addMsg(msg, room_id, (msgs: Message[]) =>
+        socket.emit('receiveMsg', new ChatResponse({ msgs }), room_id)
+      )
     })
   } catch (error) {
     socket._error(error)
