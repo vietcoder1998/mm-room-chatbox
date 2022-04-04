@@ -23,7 +23,7 @@ export async function readRoom(id: string) {
 export async function addMsg(msg: Message, room_id: string, next: Function) {
   const linked: any = dir(room_id)
   fs.readFile(
-    linked.msg,
+    linked.msgs,
     { encoding: 'utf8' },
     async (err: any, data: string) => {
       const msgs: Message[] = JSON.parse(data.toString())
