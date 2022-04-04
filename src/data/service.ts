@@ -5,7 +5,7 @@ import { Message } from '../typing'
 
 const dir = (id: string) => {
   return {
-    msgs: path.join(__dirname, 'rooms', id, 'msg.json'),
+    msgs: path.join(__dirname, 'rooms', id, 'msgs.json'),
     user: path.join(__dirname, 'rooms', id, 'user.json')
   }
 }
